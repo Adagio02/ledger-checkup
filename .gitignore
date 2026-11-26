@@ -1,0 +1,20 @@
+# Secrets and local config: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# App data: uploaded books and the database stay on the server only
+data/
+*.db
+*.sqlite*
+uploads/
+private_data/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.DS_Store

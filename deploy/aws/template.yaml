@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Ledger Checkup on a single free-tier-eligible EC2 instance (Docker + SQLite + Caddy).
+  Secrets are read at boot from SSM Parameter Store (SecureString), never stored in this template.
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t3.micro, t2.micro]
+    Description: Free-tier eligible sizes. Use t2.micro in Regions where t3.micro is not free-tier eligible.
+  RepoUrl:
+    Type: String
+    Default: https://github.com/Adagio02/ledger-checkup.git
+  Domain:
+    Type: String
+    Default: ""
+    Description: Optional domain pointed at this server's IP. Leave empty for plain HTTP on the IP address.
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: Who can reach the site. Use your own IP (x.x.x.x/32) for extra safety.
+  ParameterPrefix:
+    Type: String
+    Default: /ledger-checkup
+    Description: SSM path holding APP_PASSWORD and LLM_API_KEY (created by deploy.sh).
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Ledger Checkup web access (no SSH; use SSM Session Manager)
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: !Ref AllowedCidr }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: !Ref AllowedCidr }
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: ec2.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: read-app-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [ssm:GetParameter, ssm:GetParameters]
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterPrefix}/*
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [!GetAtt SecurityGroup.GroupId]
+      MetadataOptions: { HttpTokens: required }
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: { VolumeSize: 10, VolumeType: gp3, Encrypted: true }
+      Tags: [{ Key: Name, Value: ledger-checkup }]
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          # 1 GB swap so builds fit in a micro instance's memory
+          fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+          echo '/swapfile none swap sw 0 0' >> /etc/fstab
+          dnf install -y docker git
+          systemctl enable --now docker
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          git clone ${RepoUrl} /opt/ledger-checkup
+          cd /opt/ledger-checkup
+          get() { aws ssm get-parameter --region ${AWS::Region} --with-decryption --name "${ParameterPrefix}/$1" \
+                  --query Parameter.Value --output text 2>/dev/null || true; }
+          umask 077
+          cat > .env <<EOF
+          APP_PASSWORD=$(get APP_PASSWORD)
+          LLM_API_KEY=$(get LLM_API_KEY)
+          LLM_BASE_URL=$(get LLM_BASE_URL | grep . || echo https://api.groq.com/openai/v1)
+          LLM_MODEL=$(get LLM_MODEL | grep . || echo llama-3.3-70b-versatile)
+          DB_PATH=/app/data/ledger_checkup.db
+          EOF
+          sed -i 's/^ *//' .env
+          mkdir -p data && chown 1000:1000 data
+          DOMAIN="${Domain}"
+          export DOMAIN="${!DOMAIN:-:80}"
+          docker compose up -d --build
+
+Outputs:
+  Url:
+    Value: !If [HasDomain, !Sub "https://${Domain}", !Sub "http://${Instance.PublicIp}"]
+  InstanceId:
+    Value: !Ref Instance
+    Description: Connect with "aws ssm start-session --target <id>" (no SSH key needed)
+
+Conditions:
+  HasDomain: !Not [!Equals [!Ref Domain, ""]]

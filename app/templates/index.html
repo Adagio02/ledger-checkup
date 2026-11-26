@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ledger Checkup</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%231b64be%22/%3E%3Cpath d=%22M4 8.5l2.5 2.5L12 5%22 stroke=%22white%22 stroke-width=%222%22 fill=%22none%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/chart.umd.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Ledger Checkup <span class="tag">finds problems in your books and proposes fixes</span></div>
+  <div class="topbar-actions">
+    <select id="scanPicker" aria-label="Choose a scan"></select>
+    <button id="newScanBtn" class="btn">New scan</button>
+  </div>
+</header>
+
+<main>
+  <!-- Upload ------------------------------------------------------------ -->
+  <section id="uploadView" class="card upload hidden">
+    <h1>Check your books</h1>
+    <p class="muted">Upload CSV exports from your bank and accounting software. At least one file is needed;
+      more files enable more checks (bank + ledger for reconciliation, invoices for receivables).
+      Nothing in your books is changed until you approve a fix.</p>
+    <form id="uploadForm">
+      <label>Business name <input name="name" value="My business" maxlength="80"></label>
+      <label>Bank transactions CSV <span class="hint">date, description, amount (or debit/credit)</span>
+        <input type="file" name="bank" accept=".csv,text/csv"></label>
+      <label>General ledger CSV <span class="hint">date, memo, amount, category</span>
+        <input type="file" name="ledger" accept=".csv,text/csv"></label>
+      <label>Invoices CSV <span class="hint">invoice number, customer, invoice date, due date, amount, status</span>
+        <input type="file" name="invoices" accept=".csv,text/csv"></label>
+      <div class="row">
+        <button class="btn primary" type="submit">Run scan</button>
+        <button class="btn" type="button" id="sampleBtn">Try it with sample data</button>
+      </div>
+      <p id="uploadError" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- Dashboard ----------------------------------------------------------- -->
+  <section id="dashView" class="hidden">
+    <div class="dash-head">
+      <div>
+        <h1 id="scanName"></h1>
+        <p class="muted" id="scanMeta"></p>
+      </div>
+      <div class="row">
+        <button class="btn" id="rescanBtn" title="Re-run all checks on the corrected data">Re-run checks</button>
+        <details class="export">
+          <summary class="btn">Download corrected files</summary>
+          <div class="menu" id="exportMenu"></div>
+        </details>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="main-col">
+        <div class="tiles">
+          <div class="tile"><div class="tile-label">Books health score</div><div class="tile-value" id="kScore"></div><div class="tile-sub" id="kScoreSub"></div></div>
+          <div class="tile"><div class="tile-label">Open issues</div><div class="tile-value" id="kOpen"></div><div class="tile-sub" id="kSev"></div></div>
+          <div class="tile"><div class="tile-label">Money at stake</div><div class="tile-value" id="kStake"></div><div class="tile-sub">sum of amounts in open issues</div></div>
+          <div class="tile"><div class="tile-label">Fixes decided</div><div class="tile-value" id="kDone"></div><div class="tile-sub" id="kDoneSub"></div></div>
+        </div>
+
+        <div class="charts">
+          <figure class="card chart-card">
+            <figcaption><b>Open issues by type</b><span class="muted">Hover a bar for the dollars involved</span></figcaption>
+            <div class="chart-box"><canvas id="byTypeChart" aria-label="Open issues by type"></canvas></div>
+          </figure>
+          <figure class="card chart-card">
+            <figcaption><b>Money in and out by month</b><span class="muted">From bank transactions</span></figcaption>
+            <div class="chart-box"><canvas id="cashChart" aria-label="Money in and out by month"></canvas></div>
+          </figure>
+          <figure class="card chart-card wide">
+            <figcaption><b>Where the money goes</b><span class="muted">Top spending categories in your books</span></figcaption>
+            <div class="chart-box short"><canvas id="spendChart" aria-label="Top spending categories"></canvas></div>
+          </figure>
+        </div>
+
+        <div class="card">
+          <div class="issues-head">
+            <h2>Issues and proposed fixes</h2>
+            <div class="filters">
+              <select id="fSeverity" aria-label="Filter by severity">
+                <option value="">All severities</option><option value="critical">Critical</option>
+                <option value="serious">Serious</option><option value="warning">Warning</option><option value="info">Info</option>
+              </select>
+              <select id="fCheck" aria-label="Filter by type"><option value="">All types</option></select>
+              <select id="fStatus" aria-label="Filter by status">
+                <option value="open">Open</option><option value="">All statuses</option>
+                <option value="approved">Approved</option><option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+          <p class="muted small">Approving a fix changes the working copy of your books (download the corrected
+            files above). "Review" fixes don't change data; approving one records that you handled it.</p>
+          <div id="issues"></div>
+        </div>
+
+        <details class="card">
+          <summary><b>Audit log</b> <span class="muted">every decision, with time</span></summary>
+          <table class="audit"><thead><tr><th>Time (UTC)</th><th>Issue</th><th>Decision</th><th>What changed</th></tr></thead>
+            <tbody id="auditBody"></tbody></table>
+        </details>
+      </div>
+
+      <aside class="card chat">
+        <h2>Ask the assistant</h2>
+        <p class="muted small" id="llmStatus"></p>
+        <div class="suggestions">
+          <button class="chip">What should I fix first?</button>
+          <button class="chip">Explain the reconciliation issues</button>
+          <button class="chip">Is my cash flow healthy?</button>
+        </div>
+        <div id="chatLog" aria-live="polite"></div>
+        <form id="chatForm" class="chat-form">
+          <input id="chatInput" placeholder="Ask about your results..." autocomplete="off" maxlength="2000">
+          <button class="btn primary" type="submit">Send</button>
+        </form>
+        <p class="muted tiny">AI answers can be wrong. This is not tax or legal advice.</p>
+      </aside>
+    </div>
+  </section>
+</main>
+</body>
+</html>

@@ -81,6 +81,16 @@ aws configure                                   # your own AWS account
 
 Cost notes: AWS accounts created after July 15, 2025 get the new Free Plan (up to $200 in credits for 6 months) instead of 12 months of free usage. A t3.micro (or t2.micro), a 10 GB gp3 volume and a public IPv4 address fit within it. Set an AWS Budget alert to be safe, and delete the stack (`aws cloudformation delete-stack --stack-name ledger-checkup`) when you're done.
 
+### If the site doesn't load
+
+The first boot takes about 5 minutes. If the address still refuses to connect after that, run this from CloudShell. It shows the server's setup log, pulls the latest code and restarts the app (no SSH needed):
+
+```bash
+cd ledger-checkup && git pull
+./deploy/aws/repair.sh us-east-2          # use your stack's region
+./deploy/aws/repair.sh logs us-east-2     # only show logs, change nothing
+```
+
 ## Security
 
 - Set `APP_PASSWORD` whenever the app is reachable from the internet (HTTP Basic auth on every route except `/health`).

@@ -75,33 +75,13 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          set -euxo pipefail
-          # 1 GB swap so builds fit in a micro instance's memory
-          fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-          echo '/swapfile none swap sw 0 0' >> /etc/fstab
-          dnf install -y docker git
-          systemctl enable --now docker
-          mkdir -p /usr/local/lib/docker/cli-plugins
-          curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
-            -o /usr/local/lib/docker/cli-plugins/docker-compose
-          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-          git clone ${RepoUrl} /opt/ledger-checkup
-          cd /opt/ledger-checkup
-          get() { aws ssm get-parameter --region ${AWS::Region} --with-decryption --name "${ParameterPrefix}/$1" \
-                  --query Parameter.Value --output text 2>/dev/null || true; }
-          umask 077
-          cat > .env <<EOF
-          APP_PASSWORD=$(get APP_PASSWORD)
-          LLM_API_KEY=$(get LLM_API_KEY)
-          LLM_BASE_URL=$(get LLM_BASE_URL | grep . || echo https://api.groq.com/openai/v1)
-          LLM_MODEL=$(get LLM_MODEL | grep . || echo llama-3.3-70b-versatile)
-          DB_PATH=/app/data/ledger_checkup.db
-          EOF
-          sed -i 's/^ *//' .env
-          mkdir -p data && chown 1000:1000 data
-          DOMAIN="${Domain}"
-          export DOMAIN="${!DOMAIN:-:80}"
-          docker compose up -d --build
+          # Full log: /var/log/ledger-checkup-bootstrap.log (and /var/log/cloud-init-output.log)
+          set -eux
+          export HOME=/root
+          dnf install -y git
+          if [ -d /opt/ledger-checkup/.git ]; then git -C /opt/ledger-checkup pull --ff-only; else git clone ${RepoUrl} /opt/ledger-checkup; fi
+          AWS_REGION=${AWS::Region} PARAM_PREFIX=${ParameterPrefix} DOMAIN="${Domain}" \
+            bash /opt/ledger-checkup/deploy/aws/bootstrap.sh
 
 Outputs:
   Url:

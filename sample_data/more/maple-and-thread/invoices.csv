@@ -1,0 +1,9 @@
+Invoice Number,Customer,Invoice Date,Due Date,Amount,Status,Paid Date
+MT-0041,Juniper & Moss Boutique,2026-09-04,2026-10-04,640.00,Paid,2026-09-22
+MT-0042,The Copper Kettle Gifts,2026-09-11,2026-10-11,425.50,Paid,2026-10-06
+MT-0043,Hollow Pine General,2026-09-18,2026-10-18,880.00,Unpaid,
+MT-0044,Juniper & Moss Boutique,2026-09-29,2026-10-29,512.75,Paid,2026-10-19
+MT-0044,Wren Street Market,2026-10-01,2026-10-31,298.00,Paid,2026-10-16
+MT-0045,Wren Street Market,2026-10-06,2026-11-05,760.00,Unpaid,
+MT-0047,The Copper Kettle Gifts,2026-10-20,2026-11-19,395.25,Paid,2026-11-03
+MT-0048,Hollow Pine General,2026-11-03,2026-12-03,615.00,Unpaid,

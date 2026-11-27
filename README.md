@@ -55,7 +55,7 @@ Or with Docker: `docker compose up --build` and open http://localhost.
 
 ### CSV formats
 
-Column names are matched loosely (e.g. `Date` / `Posted Date`, `Description` / `Memo` / `Payee`, `Amount` or `Debit`+`Credit`). See [`sample_data/`](sample_data/) for examples, and [`scripts/make_sample_data.py`](scripts/make_sample_data.py) for the list of planted problems.
+Column names are matched loosely (e.g. `Date` / `Posted Date`, `Description` / `Memo` / `Payee`, `Amount` or `Debit`+`Credit`). See [`sample_data/`](sample_data/) for examples (and [`sample_data/more/`](sample_data/more/) for three more fictional businesses to upload), and [`scripts/make_sample_data.py`](scripts/make_sample_data.py) for the list of planted problems.
 
 ## Free LLM options
 
